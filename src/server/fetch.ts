@@ -2,43 +2,45 @@ import {
   collection,
   DocumentData,
   getDocs,
-  limit,
   orderBy,
   query,
 } from "firebase/firestore";
 import { db } from "./connection";
 
 export interface WorldcupList {
-  worldcupId: string;
-  worldcupInfo:
-    | {
-        userId: string;
-        worldcupTitle: string;
-        worldcupDescription: string;
-        category: string[];
-        worldcupImages: {
-          fileIndex: number;
-          filePath: string;
-          fileName: string;
-        }[];
-      }
-    | DocumentData;
+  id: string; 
+  data: DocumentData;
 }
 
 //파이어베이스 DB연동
 const worldcupRef = collection(db, "worldcup");
 
-//월드컵 리스트 불러오기(최신순)
-export const getWorldCupList = async (pageParam: number) => {
-  const resultArray: WorldcupList[] = [];
-  const worldcupQuery = query(
-    worldcupRef,
-    orderBy("createAt", "desc"),
-    limit(pageParam * 8)
-  );
-  const result = await getDocs(worldcupQuery); //문서화
-  result.docs.map((data) => {
-    resultArray.push({ worldcupId: data.id, worldcupInfo: data.data() }); //필드 고유의 id값과 필드 내용을 배열에 담기
+const LIMIT = 2;
+
+//infiniteQuery는 nextPage값을 작성했을 경우 pageParam값이 기본 인자값으로 전달됨
+export async function fetchItems({ pageParam }: { pageParam: number }): Promise<{
+  data: WorldcupList[];
+  currentPage: number;
+  nextPage: number | null;
+}> {
+
+  //파이어베이스 DB불러오고 result에 할당
+  const worldcupQuery = query(worldcupRef, orderBy("createAt", "desc"));
+  const getData = await getDocs(worldcupQuery).then((res) => {
+    return res.docs;
   });
-  return resultArray;
-};
+  const result = getData.map((data) => {
+    return { id: data.id, data: data.data() };
+  });
+
+  //1초의 지연시간을 적용하고 promise값으로 리턴
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        data: result.slice(pageParam, pageParam + LIMIT),
+        currentPage: pageParam,
+        nextPage: pageParam + LIMIT < result.length ? pageParam + LIMIT : null,
+      });
+    }, 1000);
+  });
+}
